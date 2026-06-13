@@ -1,0 +1,512 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pharmaceutical Intelligence Report Generator</title>
+<style>
+  :root{
+    --ink:#1c2b3a; --navy:#13365c; --accent:#2f6fb0; --muted:#5d6b7a;
+    --line:#d8e0e8; --band:#eef3f8; --band2:#f6f9fc; --warn:#b4322b; --warnbg:#fdf3f1;
+    --ok:#1f7a4d; --paper:#ffffff; --shell:#eef1f5;
+    --sans:"Segoe UI",Roboto,Helvetica,Arial,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;font-family:var(--sans);color:var(--ink);background:var(--shell)}
+
+  .setup{max-width:760px;margin:0 auto;padding:28px 20px 80px}
+  .setup h1{font-size:22px;color:var(--navy);margin:0 0 4px}
+  .setup .sub{color:var(--muted);font-size:14px;margin:0 0 22px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px}
+  .card h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+  label{display:block;font-size:13px;font-weight:600;color:var(--ink);margin:0 0 5px}
+  .hint{font-weight:400;color:var(--muted);font-size:12px}
+  input[type=text],textarea,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:14px;color:var(--ink);background:#fff}
+  input[type=text]:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(47,111,176,.15)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+  .field{margin-bottom:14px}.field:last-child{margin-bottom:0}
+  .drop{border:2px dashed var(--line);border-radius:10px;padding:22px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s;background:var(--band2)}
+  .drop.drag{border-color:var(--accent);background:#eef5fc;color:var(--accent)}
+  .drop strong{color:var(--ink)}
+  .logoprev{display:flex;align-items:center;gap:14px;margin-top:12px}
+  .logoprev img{max-height:64px;max-width:200px;border:1px solid var(--line);border-radius:6px;padding:6px;background:#fff}
+  .linkbtn{background:none;border:none;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline;padding:0;font-size:13px}
+  .mol{display:grid;grid-template-columns:1fr 40px;gap:10px;margin-bottom:10px}
+  .mol input{margin:0}
+  .iconbtn{border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;font-size:18px;color:var(--muted);line-height:1}
+  .iconbtn:hover{color:var(--warn);border-color:var(--warn)}
+  .addmol{margin-top:4px;font-size:13px;color:var(--accent);background:none;border:1px dashed var(--accent);border-radius:8px;padding:9px 12px;cursor:pointer;width:100%}
+  .accentrow{display:flex;align-items:center;gap:12px}
+  .accentrow input[type=color]{width:46px;height:38px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:3px;cursor:pointer}
+  .gen{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:14px 20px;display:flex;justify-content:center;gap:12px;box-shadow:0 -4px 18px rgba(20,40,70,.06);z-index:40}
+  .gen .inner{max-width:760px;width:100%;display:flex;align-items:center;gap:14px}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:12px 22px;font:inherit;font-weight:600;font-size:15px;cursor:pointer}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--line)}
+  .progress{flex:1;font-size:13px;color:var(--muted)}
+  .progress .bar{height:6px;background:var(--band);border-radius:4px;overflow:hidden;margin-top:6px}
+  .progress .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+  .err{color:var(--warn);font-size:13px;margin-top:8px}
+  .note{font-size:12px;color:var(--muted);text-align:center;margin-top:18px;line-height:1.5}
+
+  #report{display:none}
+  .toolbar{position:sticky;top:0;z-index:30;background:#fff;border-bottom:1px solid var(--line);padding:10px 16px;display:flex;gap:10px;justify-content:center;align-items:center}
+  .pages{padding:24px 12px 60px;display:flex;flex-direction:column;align-items:center;gap:22px}
+  .page{width:210mm;min-height:297mm;background:var(--paper);padding:20mm 18mm;box-shadow:0 6px 24px rgba(20,40,70,.12);position:relative;font-size:11.2pt;line-height:1.5;color:var(--ink)}
+  .page .foot{position:absolute;left:18mm;right:18mm;bottom:12mm;border-top:1px solid var(--line);padding-top:6px;font-size:8.5pt;color:var(--muted);display:flex;justify-content:space-between}
+  .rhead{font-size:8.5pt;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:16px;letter-spacing:.02em}
+  .cover .toprule{height:7px;background:var(--accent);margin-bottom:30px}
+  .cover .logo{margin:6px 0 22px}
+  .cover .logo img{max-height:84px;max-width:260px}
+  .cover .eyebrow{color:var(--accent);font-size:10.5pt;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+  .cover h1{color:var(--navy);font-size:34pt;line-height:1.08;margin:10px 0 16px;font-weight:800}
+  .cover .molline{color:var(--accent);font-size:14pt;font-weight:700;margin:0 0 8px}
+  .cover .tag{font-style:italic;color:var(--ink);font-size:13pt;margin:0 0 26px}
+  .cover .midrule{height:4px;background:var(--accent);width:100%;margin:6px 0 26px}
+  .cover .scopeh{font-weight:700;color:var(--navy);margin:0 0 12px}
+  .cover ul.scope{list-style:none;padding:0;margin:0 0 30px}
+  .cover ul.scope li{position:relative;padding-left:18px;margin-bottom:9px}
+  .cover ul.scope li::before{content:"•";color:var(--accent);position:absolute;left:0;font-weight:700}
+  .cover .pp{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:24px}
+  .cover .pp>div{padding:14px 16px}
+  .cover .pp>div:first-child{border-right:1px solid var(--line)}
+  .cover .pp .k{font-size:9pt;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .cover .pp .v{font-weight:700;color:var(--navy)}
+  .cover .pp .vsub{font-weight:400;color:var(--ink);font-size:10pt;margin-top:3px}
+  .cover .date{color:var(--muted);font-size:10.5pt}
+  h2.sec{color:var(--navy);font-size:17pt;font-weight:800;margin:0 0 14px}
+  h3.sub{color:var(--navy);font-size:12.5pt;font-weight:700;margin:18px 0 8px}
+  .page p{margin:0 0 11px}
+  .molband{background:var(--accent);color:#fff;border-radius:6px;padding:14px 16px;margin-bottom:14px}
+  .molband .mnum{font-size:9pt;letter-spacing:.14em;text-transform:uppercase;opacity:.85}
+  .molband .mname{font-size:18pt;font-weight:800;margin:2px 0}
+  .molband .mtag{font-size:10.5pt;opacity:.95}
+  ul.b{margin:0 0 12px;padding-left:18px}
+  ul.b li{margin-bottom:6px}
+  ul.b li b{color:var(--navy)}
+  table.t{width:100%;border-collapse:collapse;margin:6px 0 16px;font-size:9.6pt}
+  table.t th,table.t td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  table.t thead th{background:var(--accent);color:#fff;font-weight:700;font-size:9.4pt}
+  table.t tbody tr:nth-child(even){background:var(--band2)}
+  table.t td.p{font-weight:600;color:var(--navy);background:var(--band)}
+  table.id td:first-child{width:34%;font-weight:600;color:var(--navy);background:var(--band)}
+  .callout{background:var(--band);border-left:4px solid var(--accent);border-radius:0 6px 6px 0;padding:12px 14px;margin:10px 0 16px;font-size:10.4pt}
+  .callout .ct{font-weight:700;color:var(--navy);margin-bottom:4px}
+  .warnbox{background:var(--warnbg);border:1px solid #e7b7b1;border-left:4px solid var(--warn);border-radius:0 6px 6px 0;padding:12px 14px;margin:6px 0 14px}
+  .warnbox .wt{font-weight:700;color:var(--warn);margin-bottom:5px;font-size:10.6pt}
+  .casebox{background:var(--band2);border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin:8px 0 4px;font-size:10.4pt}
+  .moa h4{color:var(--navy);margin:10px 0 5px;font-size:11pt}
+  .summaryband{background:var(--navy);color:#fff;border-radius:8px;padding:18px 20px;margin:16px 0}
+  .summaryband .st{font-size:13pt;font-weight:800;margin-bottom:8px}
+  .disc{font-size:8.6pt;color:var(--muted);border-top:1px solid var(--line);padding-top:10px;margin-top:18px;line-height:1.45}
+  .secbar{display:flex;justify-content:flex-end;margin:-6px 0 8px}
+  .regenbtn{font-family:var(--sans);font-size:9pt;font-weight:600;color:var(--accent);background:#fff;border:1px solid var(--accent);border-radius:999px;padding:4px 12px;cursor:pointer;line-height:1.2}
+  .regenbtn:hover{background:var(--accent);color:#fff}
+  .regenbtn:disabled{opacity:.45;cursor:not-allowed}
+  @media (max-width:880px){
+    .page{width:100%;min-height:auto;padding:24px 18px;box-shadow:0 4px 14px rgba(20,40,70,.1)}
+    .cover h1{font-size:26pt}.row{grid-template-columns:1fr}
+  }
+  @media print{
+    @page{size:A4;margin:0}
+    body{background:#fff}
+    .toolbar,.gen,.setup{display:none !important}
+    .secbar,.regenbtn{display:none !important}
+    .pages{padding:0;gap:0}
+    .page{width:auto;min-height:100vh;box-shadow:none;margin:0;padding:18mm 16mm;page-break-after:always}
+    .page:last-child{page-break-after:auto}
+    table.t,.warnbox,.callout,.casebox,.molband,.summaryband{page-break-inside:avoid}
+    h2.sec,h3.sub{page-break-after:avoid}
+  }
+</style>
+
+<div id="gate" style="display:none;position:fixed;inset:0;background:rgba(20,40,70,.55);z-index:60;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;padding:26px;max-width:340px;width:90%;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.25)">
+    <h2 style="margin:0 0 6px;color:#13365c;font-size:18px">Enter access code</h2>
+    <p style="margin:0 0 14px;color:#5d6b7a;font-size:13px">This report tool is access-restricted.</p>
+    <input type="password" id="gateInput" placeholder="Access code" style="width:100%;padding:11px;border:1px solid #d8e0e8;border-radius:8px;font-size:14px;margin-bottom:6px">
+    <div id="gateErr" style="color:#b4322b;font-size:12px;min-height:16px;margin-bottom:8px"></div>
+    <button class="btn" id="gateBtn" style="width:100%">Continue</button>
+  </div>
+</div>
+
+<div class="setup" id="setup">
+  <h1>Pharmaceutical Intelligence Report Generator</h1>
+  <p class="sub">Upload a logo, type the brand and the molecule compositions, and a full styled portfolio report is written for you — pharmacology, comparative tables, market landscape and strategy.</p>
+
+  <div class="card">
+    <h2>Client (Prepared For)</h2>
+    <div class="field">
+      <label>Client / brand name <span class="hint">— who the report is addressed to</span></label>
+      <input type="text" id="preparedFor" placeholder="e.g. Enine Remedies">
+    </div>
+    <div class="field">
+      <label>Client logo <span class="hint">— shown on the cover</span></label>
+      <div class="drop" id="drop">
+        <strong>Drag &amp; drop a logo here</strong><br>
+        <span>or click to browse · PNG / JPG / SVG</span>
+        <input type="file" id="file" accept="image/*" hidden>
+      </div>
+      <div class="logoprev" id="logoprev" style="display:none">
+        <img id="logoimg" alt="logo preview">
+        <button class="linkbtn" id="removeLogo">Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Compositions to analyse</h2>
+    <p class="sub" style="margin:-6px 0 12px">One molecule or composition per line — strengths included (e.g. <b>Acebrophylline 200 SR</b>, <b>Bilastine 20</b>, or an FDC like <b>Montelukast + Bilastine</b>).</p>
+    <div id="mols"></div>
+    <button class="addmol" id="addmol">+ Add another composition</button>
+  </div>
+
+  <div class="card">
+    <h2>Report framing</h2>
+    <div class="field">
+      <label>Therapy area / report title <span class="hint">— leave blank to let it be inferred</span></label>
+      <input type="text" id="therapyArea" placeholder="e.g. Respiratory & Allergy Portfolio (optional)">
+    </div>
+    <div class="row">
+      <div><label>Market geography</label><input type="text" id="geography" value="India"></div>
+      <div><label>Accent colour</label><div class="accentrow"><input type="color" id="accent" value="#2f6fb0"><span class="hint">Rules, headers &amp; tables</span></div></div>
+    </div>
+    <div class="field" style="margin-top:4px">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer">
+        <input type="checkbox" id="webGround" checked style="width:auto">
+        Fetch composition data live from the internet <span class="hint">(recommended — pulls current pharmacology, brands &amp; safety)</span>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Manufacturer (Prepared By)</h2>
+    <div class="field"><label>Company name</label><input type="text" id="pbName" value="Bajaj Formulations"></div>
+    <div class="row">
+      <div><label>Tagline</label><input type="text" id="pbTag" value="WHO-GMP Contract Manufacturer"></div>
+      <div><label>Location</label><input type="text" id="pbLoc" value="Roorkee, Uttarakhand"></div>
+    </div>
+  </div>
+
+  <p class="note">Report content is generated by AI (Google Gemini) and fetched live from the web. Market and clinical data is directional, for strategic evaluation only — not regulatory, medical or financial advice.</p>
+</div>
+
+<div class="gen" id="genbar">
+  <div class="inner">
+    <div class="progress" id="progress">
+      <span id="progtext">Ready when you are.</span>
+      <div class="bar"><i id="progbar"></i></div>
+      <div class="err" id="errbox" style="display:none"></div>
+    </div>
+    <button class="btn" id="generate">Generate report</button>
+  </div>
+</div>
+
+<div id="report">
+  <div class="toolbar">
+    <button class="btn ghost" id="backBtn">‹ Edit inputs</button>
+    <button class="btn" id="printBtn">Print / Save as PDF</button>
+  </div>
+  <div class="pages" id="pages"></div>
+</div>
+
+<script>
+const S = {
+  logo:null, preparedFor:"", therapyArea:"", geography:"India", accent:"#2f6fb0",
+  pb:{name:"Bajaj Formulations", tag:"WHO-GMP Contract Manufacturer", loc:"Roorkee, Uttarakhand"},
+  molecules:[""], report:{}
+};
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const todayStr = ()=> new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
+
+function renderMols(){
+  const wrap=$("#mols");wrap.innerHTML="";
+  S.molecules.forEach((m,i)=>{
+    const d=document.createElement("div");d.className="mol";
+    d.innerHTML=`<input type="text" placeholder="Composition ${i+1}" value="${esc(m)}"><button class="iconbtn" title="Remove">×</button>`;
+    d.querySelector("input").addEventListener("input",e=>S.molecules[i]=e.target.value);
+    d.querySelector("button").addEventListener("click",()=>{if(S.molecules.length>1){S.molecules.splice(i,1);renderMols();}});
+    wrap.appendChild(d);
+  });
+}
+$("#addmol").addEventListener("click",()=>{S.molecules.push("");renderMols();});
+renderMols();
+
+$("#preparedFor").addEventListener("input",e=>S.preparedFor=e.target.value);
+$("#therapyArea").addEventListener("input",e=>S.therapyArea=e.target.value);
+$("#geography").addEventListener("input",e=>S.geography=e.target.value);
+$("#accent").addEventListener("input",e=>S.accent=e.target.value);
+$("#webGround").addEventListener("change",e=>WEB_GROUND=e.target.checked);
+$("#pbName").addEventListener("input",e=>S.pb.name=e.target.value);
+$("#pbTag").addEventListener("input",e=>S.pb.tag=e.target.value);
+$("#pbLoc").addEventListener("input",e=>S.pb.loc=e.target.value);
+
+const drop=$("#drop"), fileIn=$("#file");
+function loadLogo(file){
+  if(!file||!file.type.startsWith("image/"))return;
+  const r=new FileReader();
+  r.onload=()=>{S.logo=r.result;$("#logoimg").src=r.result;$("#logoprev").style.display="flex";drop.style.display="none";};
+  r.readAsDataURL(file);
+}
+drop.addEventListener("click",()=>fileIn.click());
+fileIn.addEventListener("change",e=>loadLogo(e.target.files[0]));
+["dragover","dragenter"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("drag");}));
+["dragleave","dragend"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("drag");}));
+drop.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("drag");loadLogo(e.dataTransfer.files[0]);});
+$("#removeLogo").addEventListener("click",()=>{S.logo=null;$("#logoprev").style.display="none";drop.style.display="block";fileIn.value="";});
+
+/* ---- talks to our backend, never to Anthropic directly ---- */
+let ACCESS_CODE = sessionStorage.getItem("rpt_code") || "";
+let WEB_GROUND = true;
+async function callClaude(system,user){
+  const headers={"Content-Type":"application/json"};
+  if(ACCESS_CODE) headers["x-access-code"]=ACCESS_CODE;
+  const res=await fetch("/api/generate",{method:"POST",headers,body:JSON.stringify({system,user,web:WEB_GROUND})});
+  if(res.status===401){ sessionStorage.removeItem("rpt_code"); showGate(true); throw new Error("Access code required."); }
+  const data=await res.json().catch(()=>({error:{message:"Server returned a non-JSON response ("+res.status+")."}}));
+  if(!res.ok||data.error)throw new Error((data.error&&data.error.message)||("Server "+res.status));
+  const texts=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text);
+  let text=(texts.filter(t=>t.includes("{")&&t.includes("}")).pop() || texts.join("\n")).trim();
+  text=text.replace(/^```(json)?/i,"").replace(/```$/,"").trim();
+  const a=text.indexOf("{"), b=text.lastIndexOf("}");
+  if(a>=0&&b>a)text=text.slice(a,b+1);
+  return JSON.parse(text);
+}
+
+const SYS = "You are a senior pharmaceutical commercial-intelligence analyst writing B2B portfolio reports for a contract manufacturer. Be clinically accurate, evidence-grounded and commercially sharp. When a web search tool is available, use it to verify the composition's current pharmacology, the present-day brand landscape, and any recent regulatory or safety updates BEFORE writing — do not rely on memory for brand lists or safety status. Flag real safety signals honestly (e.g. boxed warnings) rather than hiding them. Keep prose tight. Your FINAL message must contain ONLY one valid minified JSON object — no markdown, no commentary, no code fences, no citations outside the JSON.";
+const ctx = () => `Therapy area: ${S.therapyArea||"(infer from molecules)"}. Market geography: ${S.geography}. Manufacturer (prepared by): ${S.pb.name}, ${S.pb.tag}, ${S.pb.loc}. Client (prepared for): ${S.preparedFor||"the client"}. Compositions in this portfolio: ${S.molecules.filter(Boolean).join("; ")}.`;
+
+function setProg(p,t){$("#progbar").style.width=p+"%";$("#progtext").textContent=t;}
+function showErr(m){const e=$("#errbox");e.style.display="block";e.textContent=m;}
+
+/* ---- per-section generators (reused for initial run AND regeneration) ---- */
+async function genFrame(){
+  const frame=await callClaude(SYS,
+`${ctx()}
+Write the report frame. JSON schema:
+{"therapyArea":string,"reportTitle":string,"tagline":string,
+"scope":[{"label":string,"text":string}](exactly 5 items),
+"executiveSummary":[string](2 short paragraphs),
+"moleculeBlurbs":[{"name":string,"text":string}](one per composition),
+"portfolioLogic":string}`);
+  S.report.frame=frame;
+  if(!S.therapyArea&&frame.therapyArea)S.therapyArea=frame.therapyArea;
+}
+async function genMolecule(i){
+  const name=S.molecules[i];
+  const m=await callClaude(SYS,
+`${ctx()}
+Deep-dive on ONE composition: "${name}". Compare it to its REAL therapeutic alternatives (name them). JSON schema:
+{"name":string,"tagline":string,
+"overview":[string](1-2 paragraphs),
+"identity":[{"attr":string,"detail":string}](6-9 rows),
+"moa":{"intro":string,"pathways":[{"title":string,"points":[string]}](1-3),"whyMatters":string},
+"clinicalUtility":[{"head":string,"text":string}](4-6),
+"safety":{"boxedWarning":{"title":string,"text":string}|null,"points":[string](4-6)},
+"comparison":{"columns":[string](this composition first, then 2-3 real alternatives),"rows":[{"param":string,"values":[string]}](6-9 rows, values length = columns length)},
+"caseText":string(start with "The <molecule> case:")}`);
+  S.report.molecules[i]=m;
+}
+async function genPortfolio(){
+  if(S.molecules.filter(Boolean).length<2){S.report.portfolio=null;return;}
+  S.report.portfolio=await callClaude(SYS,
+`${ctx()}
+Explain why these compositions work together as a portfolio. JSON schema:
+{"intro":string,
+"complementarity":{"columns":[string](the compositions),"rows":[{"axis":string,"values":[string]}](5-7 axes, values length = columns length)},
+"prescriberIntro":string,"prescriberPoints":[string](4),
+"fdcIntro":string,"fdcs":[string](3-5 relevant combinations),
+"fdcAngle":{"title":string,"text":string}}`);
+}
+async function genMarket(){
+  S.report.market=await callClaude(SYS,
+`${ctx()}
+Provide the ${S.geography} market landscape and strategic outlook. JSON schema:
+{"marketIntro":string,
+"brandTables":[{"molecule":string,"note":string,"rows":[{"brand":string,"company":string,"notes":string}](up to 8 real brands)}](one per composition),
+"outlookIntro":string,
+"outlook":[{"head":string,"text":string}](4-5 signals),
+"summaryTitle":string,"summaryText":string,
+"sources":[string](5-8),"methodology":string}`);
+}
+
+async function generate(){
+  const mols=S.molecules.map(s=>s.trim()).filter(Boolean);
+  S.molecules=mols.length?mols:[""];
+  if(!S.preparedFor.trim()){showErr("Add a client / brand name first.");return;}
+  if(!mols.length){showErr("Add at least one composition.");return;}
+  $("#errbox").style.display="none";$("#generate").disabled=true;
+  const total=2+mols.length+1; let done=0;
+  const step=t=>{done++;setProg(Math.round(done/total*100),t);};
+  try{
+    setProg(4,"Framing the report…"); await genFrame(); step("Report framed.");
+    S.report.molecules=[];
+    for(let i=0;i<mols.length;i++){
+      setProg(Math.round((done+0.5)/total*100),`Analysing ${mols[i]}…`);
+      await genMolecule(i); step(`${mols[i]} done.`);
+    }
+    setProg(Math.round((done+0.5)/total*100),"Building portfolio logic…"); await genPortfolio();
+    setProg(Math.round((done+0.7)/total*100),"Mapping market & strategy…"); await genMarket(); step("Strategy mapped.");
+    setProg(100,"Done. Opening report…"); renderReport();
+  }catch(e){
+    showErr("Generation hit a snag: "+e.message+". Try again — occasionally the model returns malformed JSON.");
+    $("#generate").disabled=false;
+  }
+}
+$("#generate").addEventListener("click",generate);
+
+/* ---- regenerate a single section ---- */
+const REGEN={
+  frame:{label:"this section",fn:genFrame},
+  portfolio:{label:"the portfolio section",fn:genPortfolio},
+  market:{label:"the market & strategy section",fn:genMarket}
+};
+async function regen(kind,idx){
+  const btns=document.querySelectorAll(".regenbtn");
+  btns.forEach(b=>b.disabled=true);
+  const active=document.querySelector(`.regenbtn[data-kind="${kind}"]${idx!=null?`[data-idx="${idx}"]`:""}`);
+  const orig=active?active.textContent:"";
+  if(active)active.textContent="Regenerating…";
+  try{
+    if(kind==="molecule"){ await genMolecule(idx); }
+    else { await REGEN[kind].fn(); }
+    renderReport();
+    const tgt=document.querySelector(`[data-anchor="${kind}${idx!=null?"-"+idx:""}"]`);
+    if(tgt)tgt.scrollIntoView({behavior:"smooth",block:"start"});
+  }catch(e){
+    if(active)active.textContent=orig;
+    btns.forEach(b=>b.disabled=false);
+    alert("Couldn't regenerate that section: "+e.message+"\nTry once more.");
+  }
+}
+window.__regen=regen;
+function regenBtn(kind,idx){
+  return `<button class="regenbtn" data-kind="${kind}"${idx!=null?` data-idx="${idx}"`:""} onclick="__regen('${kind}',${idx!=null?idx:"null"})">↻ Regenerate</button>`;
+}
+
+function molLine(){return S.molecules.filter(Boolean).join("  •  ");}
+function rhead(){return `${esc((S.report.frame&&S.report.frame.therapyArea)||S.therapyArea||"PORTFOLIO")} | ${esc(molLine())}`;}
+function foot(n,total){return `<div class="foot"><span>Confidential • For Client Review Only</span><span>Page ${n} of ${total}</span></div>`;}
+function tbl(cols,rows,firstCol){
+  let h="<table class='t'><thead><tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"</tr></thead><tbody>";
+  rows.forEach(r=>{h+="<tr>"+r.map((c,i)=>`<td${i===0&&firstCol?" class='p'":""}>${esc(c)}</td>`).join("")+"</tr>";});
+  return h+"</tbody></table>";
+}
+
+function renderReport(){
+  const r=S.report, f=r.frame||{};
+  document.documentElement.style.setProperty("--accent",S.accent);
+  const pagesEl=$("#pages");pagesEl.innerHTML="";
+  const P=[]; const title=(f.reportTitle||S.therapyArea||"Portfolio Report");
+
+  P.push(`<div class="page cover">
+    <div class="toprule"></div>
+    ${S.logo?`<div class="logo"><img src="${S.logo}"></div>`:""}
+    <div class="eyebrow">Pharmaceutical Intelligence Report</div>
+    <h1>${esc(title)}</h1>
+    <div class="molline">${esc(molLine())}</div>
+    <div class="tag">${esc(f.tagline||"A Molecule, Comparative & Portfolio Analysis")}</div>
+    <div class="midrule"></div>
+    <div class="scopeh">Scope of this Report</div>
+    <ul class="scope">${(f.scope||[]).map(s=>`<li><b>${esc(s.label)}:</b> ${esc(s.text)}</li>`).join("")}</ul>
+    <div class="pp">
+      <div><div class="k">Prepared For</div><div class="v">${esc(S.preparedFor)}</div></div>
+      <div><div class="k">Prepared By</div><div class="v">${esc(S.pb.name)}</div><div class="vsub">${esc(S.pb.tag)} | ${esc(S.pb.loc)}</div></div>
+    </div>
+    <div class="date">Report Date: ${todayStr()}</div>
+  </div>`);
+
+  P.push(`<div class="page" data-anchor="frame"><div class="rhead">${rhead()}</div>
+    <div class="secbar">${regenBtn('frame')}</div>
+    <h2 class="sec">Executive Summary</h2>
+    ${(f.executiveSummary||[]).map(p=>`<p>${esc(p)}</p>`).join("")}
+    ${(f.moleculeBlurbs&&f.moleculeBlurbs.length)?`<ul class="b">${f.moleculeBlurbs.map(b=>`<li><b>${esc(b.name)}</b> — ${esc(b.text)}</li>`).join("")}</ul>`:""}
+    <h3 class="sub">Portfolio Logic</h3><p>${esc(f.portfolioLogic||"")}</p>__FOOT__</div>`);
+
+  (r.molecules||[]).forEach((m,idx)=>{
+    const moa=m.moa||{};
+    P.push(`<div class="page" data-anchor="molecule-${idx}"><div class="rhead">${rhead()}</div>
+      <div class="secbar">${regenBtn('molecule',idx)}</div>
+      <div class="molband"><div class="mnum">Composition ${idx+1}</div><div class="mname">${esc(m.name)}</div><div class="mtag">${esc(m.tagline||"")}</div></div>
+      <h3 class="sub">${idx+1}.1 Overview</h3>${(m.overview||[]).map(p=>`<p>${esc(p)}</p>`).join("")}
+      ${(m.identity&&m.identity.length)?`<table class="t id"><tbody>${m.identity.map(row=>`<tr><td>${esc(row.attr)}</td><td>${esc(row.detail)}</td></tr>`).join("")}</tbody></table>`:""}__FOOT__</div>`);
+    P.push(`<div class="page"><div class="rhead">${rhead()}</div>
+      <h3 class="sub">${idx+1}.2 Mechanism of Action</h3>${moa.intro?`<p>${esc(moa.intro)}</p>`:""}
+      <div class="moa">${(moa.pathways||[]).map(pw=>`<h4>${esc(pw.title)}</h4><ul class="b">${(pw.points||[]).map(pt=>`<li>${esc(pt)}</li>`).join("")}</ul>`).join("")}</div>
+      ${moa.whyMatters?`<div class="callout"><div class="ct">Why this matters clinically</div>${esc(moa.whyMatters)}</div>`:""}
+      <h3 class="sub">${idx+1}.3 Clinical Utility</h3>
+      <ul class="b">${(m.clinicalUtility||[]).map(c=>`<li><b>${esc(c.head)}</b> — ${esc(c.text)}</li>`).join("")}</ul>__FOOT__</div>`);
+    const sf=m.safety||{};
+    P.push(`<div class="page"><div class="rhead">${rhead()}</div>
+      <h3 class="sub">${idx+1}.4 Safety &amp; Limitations</h3>
+      ${sf.boxedWarning?`<div class="warnbox"><div class="wt">${esc(sf.boxedWarning.title||"Important Safety Update")}</div>${esc(sf.boxedWarning.text)}</div>`:""}
+      <ul class="b">${(sf.points||[]).map(p=>`<li>${esc(p)}</li>`).join("")}</ul>
+      <h3 class="sub">${idx+1}.5 Versus the Alternatives</h3>
+      ${m.comparison?tbl(m.comparison.columns,(m.comparison.rows||[]).map(rw=>[rw.param,...(rw.values||[])]),true):""}
+      ${m.caseText?`<div class="casebox">${esc(m.caseText)}</div>`:""}__FOOT__</div>`);
+  });
+
+  if(r.portfolio){
+    const pf=r.portfolio;
+    P.push(`<div class="page" data-anchor="portfolio"><div class="rhead">${rhead()}</div>
+      <div class="secbar">${regenBtn('portfolio')}</div>
+      <h2 class="sec">The Portfolio Logic</h2><p>${esc(pf.intro||"")}</p>
+      ${pf.complementarity?`<h3 class="sub">How the Compositions Complement Each Other</h3>${tbl(["Clinical Axis",...(pf.complementarity.columns||[])],(pf.complementarity.rows||[]).map(rw=>[rw.axis,...(rw.values||[])]),true)}`:""}
+      <h3 class="sub">The Prescriber Perspective</h3><p>${esc(pf.prescriberIntro||"")}</p>
+      <ul class="b">${(pf.prescriberPoints||[]).map(p=>`<li>${esc(p)}</li>`).join("")}</ul>__FOOT__</div>`);
+    P.push(`<div class="page"><div class="rhead">${rhead()}</div>
+      <h3 class="sub">Combination (FDC) Opportunities</h3><p>${esc(pf.fdcIntro||"")}</p>
+      <ul class="b">${(pf.fdcs||[]).map(p=>`<li>${esc(p)}</li>`).join("")}</ul>
+      ${pf.fdcAngle?`<div class="callout"><div class="ct">${esc(pf.fdcAngle.title||"A commercial angle worth attention")}</div>${esc(pf.fdcAngle.text)}</div>`:""}__FOOT__</div>`);
+  }
+
+  const mk=r.market||{};
+  let marketHtml=`<div class="page" data-anchor="market"><div class="rhead">${rhead()}</div>
+    <div class="secbar">${regenBtn('market')}</div>
+    <h2 class="sec">${esc(S.geography)} Market Landscape</h2><p>${esc(mk.marketIntro||"")}</p>`;
+  (mk.brandTables||[]).forEach(bt=>{
+    marketHtml+=`<h3 class="sub">${esc(bt.molecule)} — Leading Brands</h3>
+      ${tbl(["#","Brand","Company","Commercial Notes"],(bt.rows||[]).map((row,j)=>[String(j+1),row.brand,row.company,row.notes]),false)}
+      ${bt.note?`<p style="font-size:10pt;color:var(--muted)">${esc(bt.note)}</p>`:""}`;
+  });
+  marketHtml+=`__FOOT__</div>`;P.push(marketHtml);
+
+  P.push(`<div class="page"><div class="rhead">${rhead()}</div>
+    <h2 class="sec">Strategic Outlook &amp; Opportunity</h2><p>${esc(mk.outlookIntro||"")}</p>
+    ${(mk.outlook||[]).map(o=>`<h3 class="sub">${esc(o.head)}</h3><p>${esc(o.text)}</p>`).join("")}
+    <div class="summaryband"><div class="st">${esc(mk.summaryTitle||"Summary Recommendation")}</div>${esc(mk.summaryText||"")}</div>__FOOT__</div>`);
+  P.push(`<div class="page"><div class="rhead">${rhead()}</div>
+    <h2 class="sec">Appendix • Sources &amp; Methodology</h2>
+    <h3 class="sub">Sources Referenced</h3><ul class="b">${(mk.sources||[]).map(s=>`<li>${esc(s)}</li>`).join("")}</ul>
+    <h3 class="sub">Methodology Note</h3><p>${esc(mk.methodology||"")}</p>
+    <div style="margin-top:18px"><b style="color:var(--navy)">Prepared by ${esc(S.pb.name)}</b><br>${esc(S.pb.tag)}<br>${esc(S.pb.loc)}</div>
+    <div class="disc">This document is confidential and prepared for the named client. Clinical and commercial data is directional and intended to support strategic evaluation, not regulatory, medical or financial decision-making.</div>__FOOT__</div>`);
+
+  const total=P.length;let n=0;
+  pagesEl.innerHTML=P.map(html=>{n++;return html.replace("__FOOT__",foot(n,total));}).join("");
+  $("#setup").style.display="none";$("#genbar").style.display="none";$("#report").style.display="block";window.scrollTo(0,0);
+}
+
+$("#backBtn").addEventListener("click",()=>{
+  $("#report").style.display="none";$("#setup").style.display="block";$("#genbar").style.display="flex";
+  $("#generate").disabled=false;setProg(0,"Ready when you are.");window.scrollTo(0,0);
+});
+$("#printBtn").addEventListener("click",()=>window.print());
+
+/* ---- optional access gate ---- */
+function showGate(force){ $("#gate").style.display="flex"; if(force)$("#gateErr").textContent="Code was rejected — try again."; setTimeout(()=>$("#gateInput").focus(),50); }
+function hideGate(){ $("#gate").style.display="none"; }
+$("#gateBtn").addEventListener("click",()=>{
+  const v=$("#gateInput").value.trim();
+  if(!v){$("#gateErr").textContent="Enter a code.";return;}
+  ACCESS_CODE=v; sessionStorage.setItem("rpt_code",v); $("#gateErr").textContent=""; hideGate();
+});
+$("#gateInput")&&$("#gateInput").addEventListener("keydown",e=>{if(e.key==="Enter")$("#gateBtn").click();});
+
+(async()=>{
+  try{
+    const cfg=await fetch("/api/config").then(r=>r.json());
+    if(cfg.requireCode && !ACCESS_CODE) showGate(false);
+  }catch(_){}
+})();
+
+</script>

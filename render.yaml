@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: pharma-report-generator
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false          # paste your Gemini key in the Render dashboard (kept secret)
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: ACCESS_CODE
+        sync: false          # optional: set to restrict who can use the page
