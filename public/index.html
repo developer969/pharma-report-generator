@@ -216,6 +216,7 @@ const S = {
 };
 const $ = s => document.querySelector(s);
 const esc = s => String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const arr = v => Array.isArray(v) ? v : [];   // guard: only ever .map() over real arrays
 const todayStr = ()=> new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"});
 
 function renderMols(){
@@ -387,8 +388,9 @@ function molLine(){return S.molecules.filter(Boolean).join("  •  ");}
 function rhead(){return `${esc((S.report.frame&&S.report.frame.therapyArea)||S.therapyArea||"PORTFOLIO")} | ${esc(molLine())}`;}
 function foot(n,total){return `<div class="foot"><span>Confidential • For Client Review Only</span><span>Page ${n} of ${total}</span></div>`;}
 function tbl(cols,rows,firstCol){
+  cols=arr(cols); rows=arr(rows);
   let h="<table class='t'><thead><tr>"+cols.map(c=>`<th>${esc(c)}</th>`).join("")+"</tr></thead><tbody>";
-  rows.forEach(r=>{h+="<tr>"+r.map((c,i)=>`<td${i===0&&firstCol?" class='p'":""}>${esc(c)}</td>`).join("")+"</tr>";});
+  rows.forEach(r=>{const cells=Array.isArray(r)?r:[r];h+="<tr>"+cells.map((c,i)=>`<td${i===0&&firstCol?" class='p'":""}>${esc(c)}</td>`).join("")+"</tr>";});
   return h+"</tbody></table>";
 }
 
@@ -407,7 +409,7 @@ function renderReport(){
     <div class="tag">${esc(f.tagline||"A Molecule, Comparative & Portfolio Analysis")}</div>
     <div class="midrule"></div>
     <div class="scopeh">Scope of this Report</div>
-    <ul class="scope">${(f.scope||[]).map(s=>`<li><b>${esc(s.label)}:</b> ${esc(s.text)}</li>`).join("")}</ul>
+    <ul class="scope">${arr(f.scope).map(s=>`<li><b>${esc(s.label)}:</b> ${esc(s.text)}</li>`).join("")}</ul>
     <div class="pp">
       <div><div class="k">Prepared For</div><div class="v">${esc(S.preparedFor)}</div></div>
       <div><div class="k">Prepared By</div><div class="v">${esc(S.pb.name)}</div><div class="vsub">${esc(S.pb.tag)} | ${esc(S.pb.loc)}</div></div>
@@ -418,30 +420,32 @@ function renderReport(){
   P.push(`<div class="page" data-anchor="frame"><div class="rhead">${rhead()}</div>
     <div class="secbar">${regenBtn('frame')}</div>
     <h2 class="sec">Executive Summary</h2>
-    ${(f.executiveSummary||[]).map(p=>`<p>${esc(p)}</p>`).join("")}
-    ${(f.moleculeBlurbs&&f.moleculeBlurbs.length)?`<ul class="b">${f.moleculeBlurbs.map(b=>`<li><b>${esc(b.name)}</b> — ${esc(b.text)}</li>`).join("")}</ul>`:""}
+    ${arr(f.executiveSummary).map(p=>`<p>${esc(p)}</p>`).join("")}
+    ${arr(f.moleculeBlurbs).length?`<ul class="b">${arr(f.moleculeBlurbs).map(b=>`<li><b>${esc(b.name)}</b> — ${esc(b.text)}</li>`).join("")}</ul>`:""}
     <h3 class="sub">Portfolio Logic</h3><p>${esc(f.portfolioLogic||"")}</p>__FOOT__</div>`);
 
-  (r.molecules||[]).forEach((m,idx)=>{
+  arr(r.molecules).forEach((m,idx)=>{
     const moa=m.moa||{};
+    // overview may come back as a string instead of an array — render it as a paragraph.
+    const ov=Array.isArray(m.overview)?m.overview:(m.overview?[String(m.overview)]:[]);
     P.push(`<div class="page" data-anchor="molecule-${idx}"><div class="rhead">${rhead()}</div>
       <div class="secbar">${regenBtn('molecule',idx)}</div>
       <div class="molband"><div class="mnum">Composition ${idx+1}</div><div class="mname">${esc(m.name)}</div><div class="mtag">${esc(m.tagline||"")}</div></div>
-      <h3 class="sub">${idx+1}.1 Overview</h3>${(m.overview||[]).map(p=>`<p>${esc(p)}</p>`).join("")}
-      ${(m.identity&&m.identity.length)?`<table class="t id"><tbody>${m.identity.map(row=>`<tr><td>${esc(row.attr)}</td><td>${esc(row.detail)}</td></tr>`).join("")}</tbody></table>`:""}__FOOT__</div>`);
+      <h3 class="sub">${idx+1}.1 Overview</h3>${ov.map(p=>`<p>${esc(p)}</p>`).join("")}
+      ${arr(m.identity).length?`<table class="t id"><tbody>${arr(m.identity).map(row=>`<tr><td>${esc(row.attr)}</td><td>${esc(row.detail)}</td></tr>`).join("")}</tbody></table>`:""}__FOOT__</div>`);
     P.push(`<div class="page"><div class="rhead">${rhead()}</div>
       <h3 class="sub">${idx+1}.2 Mechanism of Action</h3>${moa.intro?`<p>${esc(moa.intro)}</p>`:""}
-      <div class="moa">${(moa.pathways||[]).map(pw=>`<h4>${esc(pw.title)}</h4><ul class="b">${(pw.points||[]).map(pt=>`<li>${esc(pt)}</li>`).join("")}</ul>`).join("")}</div>
+      <div class="moa">${arr(moa.pathways).map(pw=>`<h4>${esc(pw.title)}</h4><ul class="b">${arr(pw.points).map(pt=>`<li>${esc(pt)}</li>`).join("")}</ul>`).join("")}</div>
       ${moa.whyMatters?`<div class="callout"><div class="ct">Why this matters clinically</div>${esc(moa.whyMatters)}</div>`:""}
       <h3 class="sub">${idx+1}.3 Clinical Utility</h3>
-      <ul class="b">${(m.clinicalUtility||[]).map(c=>`<li><b>${esc(c.head)}</b> — ${esc(c.text)}</li>`).join("")}</ul>__FOOT__</div>`);
+      <ul class="b">${arr(m.clinicalUtility).map(c=>`<li><b>${esc(c.head)}</b> — ${esc(c.text)}</li>`).join("")}</ul>__FOOT__</div>`);
     const sf=m.safety||{};
     P.push(`<div class="page"><div class="rhead">${rhead()}</div>
       <h3 class="sub">${idx+1}.4 Safety &amp; Limitations</h3>
       ${sf.boxedWarning?`<div class="warnbox"><div class="wt">${esc(sf.boxedWarning.title||"Important Safety Update")}</div>${esc(sf.boxedWarning.text)}</div>`:""}
-      <ul class="b">${(sf.points||[]).map(p=>`<li>${esc(p)}</li>`).join("")}</ul>
+      <ul class="b">${arr(sf.points).map(p=>`<li>${esc(p)}</li>`).join("")}</ul>
       <h3 class="sub">${idx+1}.5 Versus the Alternatives</h3>
-      ${m.comparison?tbl(m.comparison.columns,(m.comparison.rows||[]).map(rw=>[rw.param,...(rw.values||[])]),true):""}
+      ${m.comparison?tbl(m.comparison.columns,arr(m.comparison.rows).map(rw=>[rw.param,...arr(rw.values)]),true):""}
       ${m.caseText?`<div class="casebox">${esc(m.caseText)}</div>`:""}__FOOT__</div>`);
   });
 
@@ -450,12 +454,12 @@ function renderReport(){
     P.push(`<div class="page" data-anchor="portfolio"><div class="rhead">${rhead()}</div>
       <div class="secbar">${regenBtn('portfolio')}</div>
       <h2 class="sec">The Portfolio Logic</h2><p>${esc(pf.intro||"")}</p>
-      ${pf.complementarity?`<h3 class="sub">How the Compositions Complement Each Other</h3>${tbl(["Clinical Axis",...(pf.complementarity.columns||[])],(pf.complementarity.rows||[]).map(rw=>[rw.axis,...(rw.values||[])]),true)}`:""}
+      ${pf.complementarity?`<h3 class="sub">How the Compositions Complement Each Other</h3>${tbl(["Clinical Axis",...arr(pf.complementarity.columns)],arr(pf.complementarity.rows).map(rw=>[rw.axis,...arr(rw.values)]),true)}`:""}
       <h3 class="sub">The Prescriber Perspective</h3><p>${esc(pf.prescriberIntro||"")}</p>
-      <ul class="b">${(pf.prescriberPoints||[]).map(p=>`<li>${esc(p)}</li>`).join("")}</ul>__FOOT__</div>`);
+      <ul class="b">${arr(pf.prescriberPoints).map(p=>`<li>${esc(p)}</li>`).join("")}</ul>__FOOT__</div>`);
     P.push(`<div class="page"><div class="rhead">${rhead()}</div>
       <h3 class="sub">Combination (FDC) Opportunities</h3><p>${esc(pf.fdcIntro||"")}</p>
-      <ul class="b">${(pf.fdcs||[]).map(p=>`<li>${esc(p)}</li>`).join("")}</ul>
+      <ul class="b">${arr(pf.fdcs).map(p=>`<li>${esc(p)}</li>`).join("")}</ul>
       ${pf.fdcAngle?`<div class="callout"><div class="ct">${esc(pf.fdcAngle.title||"A commercial angle worth attention")}</div>${esc(pf.fdcAngle.text)}</div>`:""}__FOOT__</div>`);
   }
 
@@ -463,20 +467,20 @@ function renderReport(){
   let marketHtml=`<div class="page" data-anchor="market"><div class="rhead">${rhead()}</div>
     <div class="secbar">${regenBtn('market')}</div>
     <h2 class="sec">${esc(S.geography)} Market Landscape</h2><p>${esc(mk.marketIntro||"")}</p>`;
-  (mk.brandTables||[]).forEach(bt=>{
+  arr(mk.brandTables).forEach(bt=>{
     marketHtml+=`<h3 class="sub">${esc(bt.molecule)} — Leading Brands</h3>
-      ${tbl(["#","Brand","Company","Commercial Notes"],(bt.rows||[]).map((row,j)=>[String(j+1),row.brand,row.company,row.notes]),false)}
+      ${tbl(["#","Brand","Company","Commercial Notes"],arr(bt.rows).map((row,j)=>[String(j+1),row.brand,row.company,row.notes]),false)}
       ${bt.note?`<p style="font-size:10pt;color:var(--muted)">${esc(bt.note)}</p>`:""}`;
   });
   marketHtml+=`__FOOT__</div>`;P.push(marketHtml);
 
   P.push(`<div class="page"><div class="rhead">${rhead()}</div>
     <h2 class="sec">Strategic Outlook &amp; Opportunity</h2><p>${esc(mk.outlookIntro||"")}</p>
-    ${(mk.outlook||[]).map(o=>`<h3 class="sub">${esc(o.head)}</h3><p>${esc(o.text)}</p>`).join("")}
+    ${arr(mk.outlook).map(o=>`<h3 class="sub">${esc(o.head)}</h3><p>${esc(o.text)}</p>`).join("")}
     <div class="summaryband"><div class="st">${esc(mk.summaryTitle||"Summary Recommendation")}</div>${esc(mk.summaryText||"")}</div>__FOOT__</div>`);
   P.push(`<div class="page"><div class="rhead">${rhead()}</div>
     <h2 class="sec">Appendix • Sources &amp; Methodology</h2>
-    <h3 class="sub">Sources Referenced</h3><ul class="b">${(mk.sources||[]).map(s=>`<li>${esc(s)}</li>`).join("")}</ul>
+    <h3 class="sub">Sources Referenced</h3><ul class="b">${arr(mk.sources).map(s=>`<li>${esc(s)}</li>`).join("")}</ul>
     <h3 class="sub">Methodology Note</h3><p>${esc(mk.methodology||"")}</p>
     <div style="margin-top:18px"><b style="color:var(--navy)">Prepared by ${esc(S.pb.name)}</b><br>${esc(S.pb.tag)}<br>${esc(S.pb.loc)}</div>
     <div class="disc">This document is confidential and prepared for the named client. Clinical and commercial data is directional and intended to support strategic evaluation, not regulatory, medical or financial decision-making.</div>__FOOT__</div>`);
