@@ -2,6 +2,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pharmaceutical Intelligence Report Generator</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --ink:#1c2b3a; --navy:#13365c; --accent:#2f6fb0; --muted:#5d6b7a;
@@ -110,12 +111,37 @@
     body{background:#fff}
     .toolbar,.gen,.setup{display:none !important}
     .secbar,.regenbtn{display:none !important}
+    .logout-btn{display:none !important}
     .pages{padding:0;gap:0}
     .page{width:auto;min-height:100vh;box-shadow:none;margin:0;padding:18mm 16mm;page-break-after:always}
     .page:last-child{page-break-after:auto}
     table.t,.warnbox,.callout,.casebox,.molband,.summaryband{page-break-inside:avoid}
     h2.sec,h3.sub{page-break-after:avoid}
   }
+
+  /* ---- Stage 1: login / signup screen ---- */
+  .auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+    background:linear-gradient(135deg,#13365B 0%,#184E5A 100%)}
+  .auth-card{background:#fff;border-radius:14px;padding:32px 28px;max-width:380px;width:100%;
+    box-shadow:0 24px 60px rgba(0,0,0,.28)}
+  .auth-card h1{color:#13365B;font-size:22px;margin:0 0 4px}
+  .auth-card .auth-sub{color:#5d6b7a;font-size:13px;margin:0 0 22px;line-height:1.45}
+  .auth-card label{display:block;font-size:13px;font-weight:600;color:#1c2b3a;margin:0 0 5px}
+  .auth-card input{width:100%;padding:11px 12px;border:1px solid #d8e0e8;border-radius:8px;
+    font:inherit;font-size:14px;color:#1c2b3a;background:#fff;margin:0 0 14px}
+  .auth-card input:focus{outline:none;border-color:#184E5A;box-shadow:0 0 0 3px rgba(24,78,90,.15)}
+  .auth-actions{display:flex;gap:10px;margin-top:4px}
+  .auth-btn{flex:1;border:none;border-radius:9px;padding:12px;font:inherit;font-weight:600;font-size:14px;cursor:pointer}
+  .auth-btn:disabled{opacity:.5;cursor:not-allowed}
+  .auth-btn.primary{background:#184E5A;color:#fff}
+  .auth-btn.secondary{background:#fff;color:#13365B;border:1px solid #13365B}
+  .auth-msg{font-size:13px;margin-top:14px;min-height:18px;text-align:center;line-height:1.4}
+  .auth-msg.error{color:#b4322b}
+  .auth-msg.ok{color:#1f7a4d}
+  .logout-btn{position:fixed;top:12px;right:14px;z-index:50;background:#fff;border:1px solid #d8e0e8;
+    border-radius:999px;padding:7px 14px;font-family:var(--sans);font-size:12px;font-weight:600;
+    color:#13365B;cursor:pointer;box-shadow:0 2px 8px rgba(20,40,70,.12)}
+  .logout-btn:hover{border-color:#184E5A;color:#184E5A}
 </style>
 
 <div id="gate" style="display:none;position:fixed;inset:0;background:rgba(20,40,70,.55);z-index:60;align-items:center;justify-content:center">
@@ -127,6 +153,25 @@
     <button class="btn" id="gateBtn" style="width:100%">Continue</button>
   </div>
 </div>
+
+<div id="authScreen" class="auth-wrap" style="display:none">
+  <div class="auth-card">
+    <h1>Bajaj Formulations</h1>
+    <p class="auth-sub">Pharmaceutical Intelligence Report Generator — sign in to continue.</p>
+    <label for="authEmail">Email</label>
+    <input type="email" id="authEmail" placeholder="you@company.com" autocomplete="email">
+    <label for="authPw">Password</label>
+    <input type="password" id="authPw" placeholder="Your password" autocomplete="current-password">
+    <div class="auth-actions">
+      <button class="auth-btn primary" id="loginBtn">Log in</button>
+      <button class="auth-btn secondary" id="signupBtn">Sign up</button>
+    </div>
+    <div class="auth-msg" id="authMsg"></div>
+  </div>
+</div>
+
+<div id="appScreen" style="display:none">
+<button class="logout-btn" id="logoutBtn">Log out</button>
 
 <div class="setup" id="setup">
   <h1>Pharmaceutical Intelligence Report Generator</h1>
@@ -208,7 +253,14 @@
   <div class="pages" id="pages"></div>
 </div>
 
+</div><!-- /appScreen -->
+
 <script>
+/* ---- Stage 1: Supabase auth config (publishable key is safe to ship in the browser) ---- */
+const SUPABASE_URL = "https://nvkihbdofkutxbgpbnqg.supabase.co";
+const SUPABASE_KEY = "sb_publishable_fJbgzYRfDz2hCGbqw5GB9g_LYIj5CkA"; // sb_publishable_... (public, safe)
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 const S = {
   logo:null, preparedFor:"", therapyArea:"", geography:"India", accent:"#2f6fb0",
   pb:{name:"Bajaj Formulations", tag:"WHO-GMP Contract Manufacturer", loc:"Roorkee, Uttarakhand"},
@@ -261,6 +313,9 @@ let WEB_GROUND = true;
 async function callClaude(system,user){
   const headers={"Content-Type":"application/json"};
   if(ACCESS_CODE) headers["x-access-code"]=ACCESS_CODE;
+  // Stage 1 prep: forward the logged-in user's token (the backend starts checking it in Stage 2).
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session) headers["Authorization"]="Bearer "+session.access_token;
   const res=await fetch("/api/generate",{method:"POST",headers,body:JSON.stringify({system,user,web:WEB_GROUND})});
   if(res.status===401){ sessionStorage.removeItem("rpt_code"); showGate(true); throw new Error("Access code required."); }
   const data=await res.json().catch(()=>({error:{message:"Server returned a non-JSON response ("+res.status+")."}}));
@@ -512,5 +567,38 @@ $("#gateInput")&&$("#gateInput").addEventListener("keydown",e=>{if(e.key==="Ente
     if(cfg.requireCode && !ACCESS_CODE) showGate(false);
   }catch(_){}
 })();
+
+/* ---- Stage 1: login / signup wiring ---- */
+async function doSignup(email,pw){ const { error } = await sb.auth.signUp({ email, password: pw }); return error ? error.message : "Check your email to confirm, then log in."; }
+async function doLogin(email,pw){ const { error } = await sb.auth.signInWithPassword({ email, password: pw }); return error ? error.message : null; }
+async function doLogout(){ await sb.auth.signOut(); }
+
+async function refreshAuthUI(){
+  const { data:{ session } } = await sb.auth.getSession();
+  document.getElementById('authScreen').style.display = session ? 'none' : 'flex';
+  document.getElementById('appScreen').style.display  = session ? 'block' : 'none';
+}
+function setAuthMsg(text,kind){ const el=$("#authMsg"); el.textContent=text||""; el.className="auth-msg"+(kind?" "+kind:""); }
+function authBusy(b){ $("#loginBtn").disabled=b; $("#signupBtn").disabled=b; }
+
+$("#loginBtn").addEventListener("click",async()=>{
+  const email=$("#authEmail").value.trim(), pw=$("#authPw").value;
+  if(!email||!pw){ setAuthMsg("Enter your email and password.","error"); return; }
+  setAuthMsg("Logging in…"); authBusy(true);
+  const err=await doLogin(email,pw); authBusy(false);
+  if(err) setAuthMsg(err,"error"); else setAuthMsg("");   // onAuthStateChange swaps screens
+});
+$("#signupBtn").addEventListener("click",async()=>{
+  const email=$("#authEmail").value.trim(), pw=$("#authPw").value;
+  if(!email||!pw){ setAuthMsg("Enter an email and a password to sign up.","error"); return; }
+  setAuthMsg("Creating your account…"); authBusy(true);
+  const msg=await doSignup(email,pw); authBusy(false);
+  setAuthMsg(msg, /check your email/i.test(msg) ? "ok" : "error");
+});
+$("#authPw").addEventListener("keydown",e=>{ if(e.key==="Enter")$("#loginBtn").click(); });
+$("#logoutBtn").addEventListener("click",async()=>{ await doLogout(); });  // onAuthStateChange swaps screens
+
+sb.auth.onAuthStateChange(()=>refreshAuthUI());
+refreshAuthUI();
 
 </script>
