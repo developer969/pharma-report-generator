@@ -6,6 +6,7 @@ import express from "express";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
 
@@ -18,6 +19,38 @@ const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const FALLBACK_MODEL = "gemini-2.5-flash-lite"; // less-congested fallback under load
 const ACCESS_CODE = (process.env.ACCESS_CODE || "").trim();
 const API_KEY = process.env.GEMINI_API_KEY || "";
+
+// ---- Supabase auth (Stage 2) ----------------------------------------------
+// Validate the logged-in user's token server-side. The publishable key is safe
+// here (same one the browser uses); it only lets us verify tokens, not bypass RLS.
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://nvkihbdofkutxbgpbnqg.supabase.co";
+const SUPABASE_KEY = process.env.SUPABASE_KEY || "sb_publishable_fJbgzYRfDz2hCGbqw5GB9g_LYIj5CkA";
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+
+// Verify the Bearer token from the Authorization header. Returns the Supabase
+// user on success; on a missing/invalid token it sends a 401 and returns null
+// (callers must stop when they get null).
+async function requireUser(req, res) {
+  const authz = req.headers["authorization"] || "";
+  const token = authz.startsWith("Bearer ") ? authz.slice(7).trim() : "";
+  if (!token) {
+    res.status(401).json({ error: { message: "Authentication required — please log in." } });
+    return null;
+  }
+  try {
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) {
+      res.status(401).json({ error: { message: "Session expired or invalid — please log in again." } });
+      return null;
+    }
+    return data.user;
+  } catch {
+    res.status(401).json({ error: { message: "Could not verify your session — please log in again." } });
+    return null;
+  }
+}
 const endpointFor = (model) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
@@ -151,6 +184,10 @@ async function generateSection({ system, user, grounded }) {
 }
 
 app.post("/api/generate", async (req, res) => {
+  // Require a valid logged-in Supabase user (sends 401 itself if not).
+  const authedUser = await requireUser(req, res);
+  if (!authedUser) return;
+  // Optional access-code gate still applies on top, when configured.
   if (ACCESS_CODE && (req.headers["x-access-code"] || "") !== ACCESS_CODE) {
     return res.status(401).json({ error: { message: "Invalid or missing access code." } });
   }
