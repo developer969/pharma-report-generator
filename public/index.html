@@ -584,10 +584,26 @@ async function doLogin(email,pw){ const { error } = await sb.auth.signInWithPass
 async function doLogout(){ await sb.auth.signOut(); }
 
 async function refreshAuthUI(){
-  const { data:{ session } } = await sb.auth.getSession();
-  document.getElementById('authScreen').style.display = session ? 'none' : 'flex';
-  document.getElementById('appScreen').style.display  = session ? 'block' : 'none';
-  if(session) loadBalance();
+  // Fail safe: any problem reading the session must still show the login screen,
+  // never leave both screens hidden (which renders a blank page).
+  let session=null;
+  try{
+    const { data, error } = await sb.auth.getSession();
+    if(!error && data) session = data.session || null;
+  }catch(_){ session=null; }
+  // A stale/expired token counts as logged out.
+  if(session && session.expires_at && session.expires_at*1000 <= Date.now()) session=null;
+
+  const authEl=document.getElementById('authScreen');
+  const appEl=document.getElementById('appScreen');
+  if(session){
+    authEl.style.display='none';
+    appEl.style.display='block';
+    loadBalance();
+  }else{
+    authEl.style.display='flex';
+    appEl.style.display='none';
+  }
 }
 
 // Show how many reports the user has left (RLS lets a user read their own row).
