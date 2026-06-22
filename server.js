@@ -273,4 +273,17 @@ app.post("/api/generate", async (req, res) => {
 app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Report app (Gemini) running on http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Report app (Gemini) running on http://localhost:${PORT}`);
+  // Metering config check — reports detection status only, never the key itself.
+  const looksSecret = SUPABASE_SECRET_KEY.startsWith("sb_secret_");
+  const keyStatus = !SUPABASE_SECRET_KEY
+    ? "MISSING — metering will return 500 (set it on the host)"
+    : looksSecret
+      ? "detected (sb_secret_…)"
+      : "detected but NOT an sb_secret_ key — RLS will still apply and profile reads will fail";
+  console.log(
+    `[config] SUPABASE_URL: ${process.env.SUPABASE_URL ? "from env" : "using default"} | ` +
+    `SUPABASE_SECRET_KEY: ${keyStatus}`
+  );
+});
