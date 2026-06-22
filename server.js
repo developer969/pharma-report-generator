@@ -215,13 +215,32 @@ app.post("/api/generate", async (req, res) => {
   // come through without meter and pass straight to generation.
   let meterProfile = null, meterUsesFree = false;
   if (meter === true) {
-    if (!SUPABASE_SECRET_KEY) {
+    if (!admin) {
       return res.status(500).json({ error: { message: "Server missing SUPABASE_SECRET_KEY." } });
     }
-    const { data: profile, error: profileErr } = await admin
-      .from("profiles").select("free_used, credits").eq("id", authedUser.id).single();
+    // Read the caller's profile with the admin (secret-key) client, which bypasses
+    // RLS — so it never depends on a user policy the way the browser's own read does.
+    let { data: profile, error: profileErr } = await admin
+      .from("profiles").select("free_used, credits").eq("id", authedUser.id).maybeSingle();
+
+    // No row yet (e.g. the signup trigger never ran) → create one and treat it as a
+    // fresh profile so the first report still works.
+    if (!profileErr && !profile) {
+      const { data: created, error: insertErr } = await admin
+        .from("profiles")
+        .insert({ id: authedUser.id, email: authedUser.email })
+        .select("free_used, credits")
+        .single();
+      if (insertErr) {
+        return res.status(500).json({ error: { message: "Could not create profile: " + insertErr.message } });
+      }
+      profile = created;
+    }
+
     if (profileErr || !profile) {
-      return res.status(500).json({ error: { message: "Profile not found" } });
+      // Surface the real reason — a permission error here means the configured key
+      // isn't actually the secret key (RLS is still being enforced).
+      return res.status(500).json({ error: { message: "Profile lookup failed" + (profileErr ? ": " + profileErr.message : "") } });
     }
     const canUseFree = profile.free_used === false;
     const hasCredit = profile.credits > 0;
