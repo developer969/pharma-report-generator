@@ -29,6 +29,18 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+// Admin client (secret key) — bypasses Row Level Security to read/update the
+// profiles table for metering. SUPABASE_SECRET_KEY is server-only and must never
+// reach the browser. Set it (and SUPABASE_URL) as env vars on the host.
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY || "";
+// Built only when the secret key is present, so a host that hasn't set it yet
+// still boots (metered requests then get a clear 500 — see /api/generate).
+const admin = SUPABASE_SECRET_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+  : null;
+
 // Verify the Bearer token from the Authorization header. Returns the Supabase
 // user on success; on a missing/invalid token it sends a 401 and returns null
 // (callers must stop when they get null).
@@ -194,12 +206,44 @@ app.post("/api/generate", async (req, res) => {
   if (!API_KEY) {
     return res.status(500).json({ error: { message: "GEMINI_API_KEY is not set on the server." } });
   }
-  const { system, user, web } = req.body || {};
+  const { system, user, web, meter } = req.body || {};
   if (!user) return res.status(400).json({ error: { message: "Missing 'user' prompt." } });
+
+  // ---- metering (Stage 2 paywall): 1 free report, then 1 credit = 1 report ----
+  // The frontend marks only the first section of a report run with meter:true, so
+  // a whole report is charged exactly once; later sections and "Regenerate" calls
+  // come through without meter and pass straight to generation.
+  let meterProfile = null, meterUsesFree = false;
+  if (meter === true) {
+    if (!SUPABASE_SECRET_KEY) {
+      return res.status(500).json({ error: { message: "Server missing SUPABASE_SECRET_KEY." } });
+    }
+    const { data: profile, error: profileErr } = await admin
+      .from("profiles").select("free_used, credits").eq("id", authedUser.id).single();
+    if (profileErr || !profile) {
+      return res.status(500).json({ error: { message: "Profile not found" } });
+    }
+    const canUseFree = profile.free_used === false;
+    const hasCredit = profile.credits > 0;
+    if (!canUseFree && !hasCredit) {
+      return res.status(402).json({ error: { message: "No reports left" }, needsPayment: true });
+    }
+    meterProfile = profile;
+    meterUsesFree = canUseFree;
+  }
 
   const wantGrounded = web !== false;
   try {
     const obj = await generateSection({ system, user, grounded: wantGrounded });
+    // Consume one report only after a successful generation, so a failed Gemini
+    // call never costs the customer a report.
+    if (meter === true && meterProfile) {
+      if (meterUsesFree) {
+        await admin.from("profiles").update({ free_used: true }).eq("id", authedUser.id);
+      } else {
+        await admin.from("profiles").update({ credits: meterProfile.credits - 1 }).eq("id", authedUser.id);
+      }
+    }
     // Return clean, normalised JSON as text — the shape the frontend expects.
     res.json({ content: [{ type: "text", text: JSON.stringify(obj) }] });
   } catch (e) {

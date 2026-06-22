@@ -111,7 +111,7 @@
     body{background:#fff}
     .toolbar,.gen,.setup{display:none !important}
     .secbar,.regenbtn{display:none !important}
-    .logout-btn{display:none !important}
+    .logout-btn,.balance-pill{display:none !important}
     .pages{padding:0;gap:0}
     .page{width:auto;min-height:100vh;box-shadow:none;margin:0;padding:18mm 16mm;page-break-after:always}
     .page:last-child{page-break-after:auto}
@@ -142,6 +142,10 @@
     border-radius:999px;padding:7px 14px;font-family:var(--sans);font-size:12px;font-weight:600;
     color:#13365B;cursor:pointer;box-shadow:0 2px 8px rgba(20,40,70,.12)}
   .logout-btn:hover{border-color:#184E5A;color:#184E5A}
+  .balance-pill{position:fixed;top:12px;right:104px;z-index:50;background:#13365B;color:#fff;
+    border-radius:999px;padding:7px 14px;font-family:var(--sans);font-size:12px;font-weight:600;
+    box-shadow:0 2px 8px rgba(20,40,70,.12)}
+  .balance-pill:empty{display:none}
 </style>
 
 <div id="gate" style="display:none;position:fixed;inset:0;background:rgba(20,40,70,.55);z-index:60;align-items:center;justify-content:center">
@@ -171,6 +175,7 @@
 </div>
 
 <div id="appScreen" style="display:none">
+<span id="balance" class="balance-pill"></span>
 <button class="logout-btn" id="logoutBtn">Log out</button>
 
 <div class="setup" id="setup">
@@ -310,14 +315,19 @@ $("#removeLogo").addEventListener("click",()=>{S.logo=null;$("#logoprev").style.
 /* ---- talks to our backend, never to Anthropic directly ---- */
 let ACCESS_CODE = sessionStorage.getItem("rpt_code") || "";
 let WEB_GROUND = true;
-async function callClaude(system,user){
+async function callClaude(system,user,meter){
   const headers={"Content-Type":"application/json"};
   if(ACCESS_CODE) headers["x-access-code"]=ACCESS_CODE;
-  // Stage 1 prep: forward the logged-in user's token (the backend starts checking it in Stage 2).
+  // Forward the logged-in user's token so the backend can authorise the request.
   const { data:{ session } } = await sb.auth.getSession();
   if(session) headers["Authorization"]="Bearer "+session.access_token;
-  const res=await fetch("/api/generate",{method:"POST",headers,body:JSON.stringify({system,user,web:WEB_GROUND})});
+  // meter:true only on the first section of a report run → one report = one charge.
+  const res=await fetch("/api/generate",{method:"POST",headers,body:JSON.stringify({system,user,web:WEB_GROUND,meter:meter===true})});
   if(res.status===401){ sessionStorage.removeItem("rpt_code"); showGate(true); throw new Error("Access code required."); }
+  if(res.status===402){
+    alert("You've used your free report. Buying credits will be available shortly.");
+    const e=new Error("No reports left"); e.handled=true; throw e;   // Stage 3: real "Buy credits" flow
+  }
   const data=await res.json().catch(()=>({error:{message:"Server returned a non-JSON response ("+res.status+")."}}));
   if(!res.ok||data.error)throw new Error((data.error&&data.error.message)||("Server "+res.status));
   const texts=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text);
@@ -335,7 +345,7 @@ function setProg(p,t){$("#progbar").style.width=p+"%";$("#progtext").textContent
 function showErr(m){const e=$("#errbox");e.style.display="block";e.textContent=m;}
 
 /* ---- per-section generators (reused for initial run AND regeneration) ---- */
-async function genFrame(){
+async function genFrame(meter){
   const frame=await callClaude(SYS,
 `${ctx()}
 Write the report frame. JSON schema:
@@ -343,7 +353,7 @@ Write the report frame. JSON schema:
 "scope":[{"label":string,"text":string}](exactly 5 items),
 "executiveSummary":[string](2 short paragraphs),
 "moleculeBlurbs":[{"name":string,"text":string}](one per composition),
-"portfolioLogic":string}`);
+"portfolioLogic":string}`,meter);
   S.report.frame=frame;
   if(!S.therapyArea&&frame.therapyArea)S.therapyArea=frame.therapyArea;
 }
@@ -394,7 +404,7 @@ async function generate(){
   const total=2+mols.length+1; let done=0;
   const step=t=>{done++;setProg(Math.round(done/total*100),t);};
   try{
-    setProg(4,"Framing the report…"); await genFrame(); step("Report framed.");
+    setProg(4,"Framing the report…"); await genFrame(true); step("Report framed.");
     S.report.molecules=[];
     for(let i=0;i<mols.length;i++){
       setProg(Math.round((done+0.5)/total*100),`Analysing ${mols[i]}…`);
@@ -402,9 +412,9 @@ async function generate(){
     }
     setProg(Math.round((done+0.5)/total*100),"Building portfolio logic…"); await genPortfolio();
     setProg(Math.round((done+0.7)/total*100),"Mapping market & strategy…"); await genMarket(); step("Strategy mapped.");
-    setProg(100,"Done. Opening report…"); renderReport();
+    setProg(100,"Done. Opening report…"); renderReport(); loadBalance();
   }catch(e){
-    showErr("Generation hit a snag: "+e.message+". Try again — occasionally the model returns malformed JSON.");
+    if(!e.handled) showErr("Generation hit a snag: "+e.message+". Try again — occasionally the model returns malformed JSON.");
     $("#generate").disabled=false;
   }
 }
@@ -577,6 +587,20 @@ async function refreshAuthUI(){
   const { data:{ session } } = await sb.auth.getSession();
   document.getElementById('authScreen').style.display = session ? 'none' : 'flex';
   document.getElementById('appScreen').style.display  = session ? 'block' : 'none';
+  if(session) loadBalance();
+}
+
+// Show how many reports the user has left (RLS lets a user read their own row).
+async function loadBalance(){
+  try{
+    const { data:{ user } } = await sb.auth.getUser();
+    if(!user) return;
+    const { data } = await sb.from('profiles').select('free_used, credits').eq('id', user.id).single();
+    const el = $("#balance");
+    if(!el) return;
+    if(!data){ el.textContent=""; return; }
+    el.textContent = data.free_used ? (data.credits + " credits") : "Free report available";
+  }catch(_){ /* non-fatal — balance is informational */ }
 }
 function setAuthMsg(text,kind){ const el=$("#authMsg"); el.textContent=text||""; el.className="auth-msg"+(kind?" "+kind:""); }
 function authBusy(b){ $("#loginBtn").disabled=b; $("#signupBtn").disabled=b; }
